@@ -1,0 +1,92 @@
+# ── AI Video Agent — GitHub Actions Workflow ──────────────────────────────────
+# Runs the video pipeline on:
+#   1. Manual trigger (workflow_dispatch) — paste your script in the UI
+#   2. Scheduled cron (e.g., every Monday at 9 AM UTC)
+#
+# Free tier: 2,000 minutes/month for private repos, unlimited for public repos.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Generate AI Video
+
+on:
+  # Manual trigger from GitHub UI with inputs
+  workflow_dispatch:
+    inputs:
+      script_text:
+        description: 'Voiceover script text (paste the full script)'
+        required: true
+        type: string
+      title:
+        description: 'Video title'
+        required: false
+        default: 'AI Generated Video'
+        type: string
+      skip_upload:
+        description: 'Skip YouTube upload?'
+        required: false
+        default: true
+        type: boolean
+
+  # Optional: run on a schedule (uncomment to enable)
+  # schedule:
+  #   - cron: '0 9 * * 1'  # Every Monday at 9:00 AM UTC
+
+jobs:
+  generate-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # Video generation can take a while
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install .
+
+      - name: Write script file
+        run: |
+          cat > script.txt << 'SCRIPT_EOF'
+          ${{ github.event.inputs.script_text }}
+          SCRIPT_EOF
+
+      - name: Write YouTube token (if uploading)
+        if: ${{ github.event.inputs.skip_upload == 'false' }}
+        run: echo '${{ secrets.YOUTUBE_TOKEN_JSON }}' > youtube_token.json
+
+      - name: Run AI Video Agent
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          ARGS="script.txt --title '${{ github.event.inputs.title }}'"
+          if [ "${{ github.event.inputs.skip_upload }}" = "true" ]; then
+            ARGS="$ARGS --skip-upload"
+          fi
+          python -m ai_video_agent $ARGS
+
+      - name: Upload video as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-video
+          path: output/video/*.mp4
+          retention-days: 7
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-log
+          path: output/run_log_*.json
+          retention-days: 30

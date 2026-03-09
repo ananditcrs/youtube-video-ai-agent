@@ -1,0 +1,25 @@
+# ── AI Video Agent — Docker Compose ───────────────────────────────────────────
+# Quick start:  docker compose up --build
+# With .env:    docker compose --env-file .env up --build
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  ai-video-agent:
+    build: .
+    container_name: ai-video-agent
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persist generated output (videos, images, audio) across restarts
+      - ./output:/app/output
+      # Mount YouTube OAuth token so you don't re-auth each restart
+      - ./youtube_token.json:/app/youtube_token.json
+      - ./client_secret.json:/app/client_secret.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
